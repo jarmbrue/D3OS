@@ -18,7 +18,7 @@ command = "qemu-system-x86_64"
 dependencies = [ "image", "hdd", "ovmf" ]
 args = [
     # Base machine configuration
-    "-machine", "q35,nvdimm=on,pcspk-audiodev=audio0",
+    "-machine", "q35,nvdimm=on,pcspk-audiodev=audio0,cxl=on",
     "-m", "256M,slots=2,maxmem=1G",
     "-cpu", "qemu64",
     "-bios", "RELEASEX64_OVMF.fd",
@@ -26,6 +26,7 @@ args = [
     "-vga", "std",
     "-rtc", "base=localtime",
     "-serial", "stdio",
+    "-k", "en-us",
 
     # Hard disk drive configuration
     "-device", "piix3-ide,id=ide",  # IDE Controller
@@ -34,6 +35,34 @@ args = [
     "-drive", "driver=raw,if=none,id=hdd,file.filename=hdd.img",    # HDD drive containing root filesystem
     "-device", "ide-hd,bus=ahci.0,drive=boot",  # Attach boot drive to AHCI controller (boots faster than on the IDE controller)
     "-device", "ide-hd,bus=ide.0,drive=hdd",    # Attach HDD drive to IDE controller (D3OS does not support AHCI yet)
+
+    # CXL
+    "-object", "memory-backend-file,id=cxl-mem1,share=on,mem-path=/tmp/cxltest.raw,size=256M",
+    "-object", "memory-backend-file,id=cxl-lsa1,share=on,mem-path=/tmp/lsa.raw,size=256M",
+    "-device", "pxb-cxl,bus_nr=12,bus=pcie.0,id=cxl.1",
+    "-device", "cxl-rp,port=0,bus=cxl.1,id=root_port13,chassis=0,slot=2",
+    "-device", "cxl-type3,bus=root_port13,persistent-memdev=cxl-mem1,lsa=cxl-lsa1,id=cxl-pmem0",
+    "-M", "cxl-fmw.0.targets.0=cxl.1,cxl-fmw.0.size=4G",
+
+    #"-object", "memory-backend-file,id=cxl-mem1,share=on,mem-path=/tmp/cxltest.raw,size=256M",
+    #"-object", "memory-backend-file,id=cxl-mem2,share=on,mem-path=/tmp/cxltest2.raw,size=256M",
+    #"-object", "memory-backend-file,id=cxl-mem3,share=on,mem-path=/tmp/cxltest3.raw,size=256M",
+    #"-object", "memory-backend-file,id=cxl-mem4,share=on,mem-path=/tmp/cxltest4.raw,size=256M",
+    #"-object", "memory-backend-file,id=cxl-lsa1,share=on,mem-path=/tmp/lsa.raw,size=256M",
+    #"-object", "memory-backend-file,id=cxl-lsa2,share=on,mem-path=/tmp/lsa2.raw,size=256M",
+    #"-object", "memory-backend-file,id=cxl-lsa3,share=on,mem-path=/tmp/lsa3.raw,size=256M",
+    #"-object", "memory-backend-file,id=cxl-lsa4,share=on,mem-path=/tmp/lsa4.raw,size=256M",
+    #"-device", "pxb-cxl,bus_nr=12,bus=pcie.0,id=cxl.1",
+    #"-device", "pxb-cxl,bus_nr=222,bus=pcie.0,id=cxl.2",
+    #"-device", "cxl-rp,port=0,bus=cxl.1,id=root_port13,chassis=0,slot=2",
+    #"-device", "cxl-type3,bus=root_port13,persistent-memdev=cxl-mem1,lsa=cxl-lsa1,id=cxl-pmem0",
+    #"-device", "cxl-rp,port=1,bus=cxl.1,id=root_port14,chassis=0,slot=3",
+    #"-device", "cxl-type3,bus=root_port14,persistent-memdev=cxl-mem2,lsa=cxl-lsa2,id=cxl-pmem1",
+    #"-device", "cxl-rp,port=0,bus=cxl.2,id=root_port15,chassis=0,slot=5",
+    #"-device", "cxl-type3,bus=root_port15,persistent-memdev=cxl-mem3,lsa=cxl-lsa3,id=cxl-pmem2",
+    #"-device", "cxl-rp,port=1,bus=cxl.2,id=root_port16,chassis=0,slot=6",
+    #"-device", "cxl-type3,bus=root_port16,persistent-memdev=cxl-mem4,lsa=cxl-lsa4,id=cxl-pmem3",
+    #"-M", "cxl-fmw.0.targets.0=cxl.1,cxl-fmw.0.targets.1=cxl.2,cxl-fmw.0.size=4G,cxl-fmw.0.interleave-granularity=8k",
 
     # NVDIMM configuration
     "-device", "nvdimm,memdev=mem1,id=nv1,label-size=2M",
@@ -52,7 +81,7 @@ command = "qemu-system-x86_64"
 dependencies = [ "debug-signal-vscode" ]
 args = [
     # Base machine configuration
-    "-machine", "q35,nvdimm=on,pcspk-audiodev=audio0",
+    "-machine", "q35,nvdimm=on,pcspk-audiodev=audio0,cxl=on",
     "-m", "256M,slots=2,maxmem=1G",
     "-cpu", "qemu64",
     "-bios", "RELEASEX64_OVMF.fd",
@@ -68,6 +97,14 @@ args = [
     "-drive", "driver=raw,if=none,id=hdd,file.filename=hdd.img",    # HDD drive containing root filesystem
     "-device", "ide-hd,bus=ahci.0,drive=boot",  # Attach boot drive to AHCI controller (boots faster than on the IDE controller)
     "-device", "ide-hd,bus=ide.0,drive=hdd",    # Attach HDD drive to IDE controller (D3OS does not support AHCI yet)
+
+    # CXL
+    "-object", "memory-backend-file,id=cxl-mem1,share=on,mem-path=/tmp/cxltest.raw,size=256M",
+    "-object", "memory-backend-file,id=cxl-lsa1,share=on,mem-path=/tmp/lsa.raw,size=256M",
+    "-device", "pxb-cxl,bus_nr=12,bus=pcie.0,id=cxl.1",
+    "-device", "cxl-rp,port=0,bus=cxl.1,id=root_port13,chassis=0,slot=2",
+    "-device", "cxl-type3,bus=root_port13,persistent-memdev=cxl-mem1,lsa=cxl-lsa1,id=cxl-pmem0",
+    "-M", "cxl-fmw.0.targets.0=cxl.1,cxl-fmw.0.size=4G",
 
     # NVDIMM configuration
     "-device", "nvdimm,memdev=mem1,id=nv1,label-size=2M",
@@ -90,7 +127,7 @@ args = [ "Ready to debug" ]
 dependencies = [ "image", "hdd", "ovmf" ]
 
 [tasks.gdb]
-command = "gdb" 
+command = "gdb"
 args = [ "-ex", "break start", "-ex", "target remote 127.0.0.1:1234", "-ex", "continue", "loader/kernel.elf" ]
 
 [tasks.ovmf]
