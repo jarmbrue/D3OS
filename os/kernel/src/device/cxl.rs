@@ -1,6 +1,6 @@
 use acpi::{
-    AcpiTable,
     sdt::{SdtHeader, Signature},
+    AcpiTable,
 };
 use alloc::vec::Vec;
 use core::{fmt::Debug, ptr, slice};
@@ -64,9 +64,9 @@ impl Cedt {
 pub enum CedtStructureType {
     CHBS(CXLHostBridgeStructure) = 0,
     CFMWS(CXLFixedMemoryWindowStructure) = 1,
-    //CXIMS = 2,
-    //RDPAS = 3,
-    //CSDS = 4,
+    CXIMS(CXLXorInterleaveMathStructure) = 2,
+    RDPAS(RCECDownstreamPortAssociationStructure) = 3,
+    CSDS(CXLSystemDescriptionStructure) = 4,
 }
 
 impl CedtStructureType {
@@ -74,6 +74,9 @@ impl CedtStructureType {
         match &self {
             Self::CHBS(s) => s.record_length.into(),
             Self::CFMWS(s) => s.record_length.into(),
+            Self::CXIMS(s) => s.record_length.into(),
+            Self::RDPAS(s) => s.record_length.into(),
+            Self::CSDS(s) => s.record_length.into(),
         }
     }
 
@@ -81,10 +84,14 @@ impl CedtStructureType {
         match &self {
             Self::CHBS(s) => s.is_valid(),
             Self::CFMWS(s) => s.is_valid(),
+            Self::CXIMS(s) => todo!(),
+            Self::RDPAS(s) => todo!(),
+            Self::CSDS(s) => todo!(),
         }
     }
 }
 
+#[derive(Debug)]
 #[repr(C, packed)]
 pub struct CXLHostBridgeStructure {
     _reserved_1: u8,
@@ -96,6 +103,7 @@ pub struct CXLHostBridgeStructure {
     length: u64,
 }
 
+#[derive(Debug)]
 #[repr(C, packed)]
 pub struct CXLFixedMemoryWindowStructure {
     _reserved_1: u8,
@@ -111,27 +119,33 @@ pub struct CXLFixedMemoryWindowStructure {
     qtg_id: u16, // QoS Throttling Group ID
 }
 
+#[derive(Debug)]
+#[repr(C, packed)]
+pub struct CXLXorInterleaveMathStructure {
+    _reserved_1: u8,
+    record_length: u16,
+    // TODO: add fields
+}
+
+#[derive(Debug)]
+#[repr(C, packed)]
+pub struct RCECDownstreamPortAssociationStructure {
+    _reserved_1: u8,
+    record_length: u16,
+    // TODO: add fields
+}
+
+#[derive(Debug)]
+#[repr(C, packed)]
+pub struct CXLSystemDescriptionStructure {
+    _reserved_1: u8,
+    record_length: u16,
+    // TODO: add fields
+}
+
 impl CXLHostBridgeStructure {
     fn is_valid(&self) -> bool {
         self.record_length == 0x20
-    }
-}
-
-impl Debug for CXLHostBridgeStructure {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let record_length = self.record_length;
-        let uid = self.uid;
-        let cxl_version = self.cxl_version;
-        let base = self.base;
-        let length = self.length;
-
-        f.debug_struct("CXLHostBridgeStructure")
-            .field("record_length", &record_length)
-            .field("uid", &uid)
-            .field("cxl_version", &cxl_version)
-            .field("base", &base)
-            .field("length", &length)
-            .finish()
     }
 }
 
@@ -157,29 +171,6 @@ impl CXLFixedMemoryWindowStructure {
         self.record_length as u32 == 0x24 + 4 * self.niw()
             && self.base_hpa % 256 * 1024 * 1024 == 0
             && self.window_size % 256 * 1024 * 1024 == 0
-    }
-}
-
-impl Debug for CXLFixedMemoryWindowStructure {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let record_length = self.record_length;
-        let base_hpa = self.base_hpa;
-        let window_size = self.window_size;
-        let interleave_arithmetic = self.interleave_arithmetic;
-        let hbig = self.hbig;
-        let window_restrictions = self.window_restrictions;
-        let qtg_id = self.qtg_id;
-        f.debug_struct("CXLFixedMemoryWindowStructure")
-            .field("record_length", &record_length)
-            .field("base_hpa", &base_hpa)
-            .field("window_size", &window_size)
-            .field("niw", &self.niw())
-            .field("interleave_arithmetic", &interleave_arithmetic)
-            .field("hbig", &hbig)
-            .field("window_restrictions", &window_restrictions)
-            .field("qtg_id", &qtg_id)
-            .field("interleave_targets", &self.interleave_targets())
-            .finish()
     }
 }
 
