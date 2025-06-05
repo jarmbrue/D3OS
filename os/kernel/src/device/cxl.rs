@@ -1,12 +1,14 @@
 use acpi::{
-    sdt::{SdtHeader, Signature},
     AcpiTable,
+    sdt::{SdtHeader, Signature},
 };
 use alloc::vec::Vec;
-use core::{fmt::Debug, ptr, slice};
+use core::{fmt::Debug, ops::BitOr, ptr, slice};
 use log::{error, info};
+use pci_types::{CommandRegister, EndpointHeader};
+use spin::RwLock;
 
-use crate::acpi_tables;
+use crate::{acpi_tables, pci_bus};
 
 #[repr(C, packed)]
 #[derive(Debug, Clone, Copy)]
@@ -183,6 +185,27 @@ pub fn test() {
 
         for s in structures {
             info!("{:?}", s);
+        }
+
+        let maybe_device: Option<&RwLock<EndpointHeader>> =
+            pci_bus().search_by_ids(0x1b36, 0x000b).pop();
+
+        if maybe_device.is_none() {
+            info!("No PCIe device found");
+            return;
+        }
+
+        let mut expander = maybe_device.unwrap().write();
+
+        expander.update_command(pci_bus().config_space(), |command| {
+            command.bitor(CommandRegister::BUS_MASTER_ENABLE | CommandRegister::MEMORY_ENABLE)
+        });
+
+        for s in 0..6 {
+            match expander.bar(s, pci_bus().config_space()) {
+                Some(bar) => info!("Bar {}: {:x}", s, bar.unwrap_io()),
+                None => info!("Not Bar {}", s),
+            }
         }
     } else {
         error!("No CEDT table found!");
