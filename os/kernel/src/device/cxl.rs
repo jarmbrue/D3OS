@@ -1,14 +1,25 @@
+use core::ops::BitOr;
+
 use acpi::{
     AcpiTable,
     sdt::{SdtHeader, Signature},
 };
-use alloc::vec::Vec;
-use core::{fmt::Debug, ops::BitOr, ptr, slice};
+use alloc::{sync::Arc, vec::Vec};
 use log::{error, info};
-use pci_types::{CommandRegister, EndpointHeader};
+use pci_types::{CommandRegister, ConfigRegionAccess, EndpointHeader};
 use spin::RwLock;
+use x86_64::{
+    registers::debug::DebugAddressRegister,
+    structures::paging::{PageTableFlags, frame::PhysFrameRange},
+};
 
-use crate::{acpi_tables, pci_bus};
+use crate::{
+    acpi_tables,
+    memory::{MemorySpace, PAGE_SIZE, frames, pages, vma::VmaType},
+    pci_bus,
+    process::process::Process,
+    process_manager,
+};
 
 #[repr(C, packed)]
 #[derive(Debug, Clone, Copy)]
@@ -30,7 +41,8 @@ impl Cedt {
         length -= size_of::<SdtHeader>();
 
         let mut result = Vec::new();
-        let mut structure_ptr = unsafe { ptr::from_ref(self).add(1) as *const CedtStructureType };
+        let mut structure_ptr =
+            unsafe { core::ptr::from_ref(self).add(1) as *const CedtStructureType };
         while length > 0 {
             let structure = unsafe { &*structure_ptr };
             let l = structure.record_length();
@@ -162,8 +174,8 @@ impl CXLFixedMemoryWindowStructure {
 
     fn interleave_targets(&self) -> &[u32] {
         unsafe {
-            slice::from_raw_parts(
-                ptr::from_ref(self).add(1) as *const u32,
+            alloc::slice::from_raw_parts(
+                core::ptr::from_ref(self).add(1) as *const u32,
                 self.niw() as usize,
             )
         }
@@ -176,6 +188,84 @@ impl CXLFixedMemoryWindowStructure {
     }
 }
 
+fn map_memory(start: u64, length: u64) {
+    let start_page = pages::page_from_u64(start).expect("CXL address is not page aligned");
+    let start_page_frame = frames::frame_from_u64(start).expect("CXL address is not page aligned");
+
+    let kernel_process: Arc<Process> = process_manager().read().kernel_process().unwrap();
+
+    let vma = kernel_process
+        .virtual_address_space
+        .alloc_vma(
+            Some(start_page),
+            length / PAGE_SIZE as u64,
+            MemorySpace::Kernel,
+            VmaType::DeviceMemory,
+            "CXL",
+        )
+        .expect("alloc_vma failed for NVRAM");
+
+    let phys_mem = PhysFrameRange {
+        start: start_page_frame,
+        end: start_page_frame + (length / PAGE_SIZE as u64),
+    };
+
+    info!("Mapping {:?} to {:?}", phys_mem, vma);
+
+    kernel_process
+        .virtual_address_space
+        .map_pfr_for_vma(
+            &vma,
+            phys_mem,
+            PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
+        )
+        .expect("Could not map base_address of CXL ACPI table");
+}
+
+#[derive(Debug)]
+struct RCHDownstreamPortRCRB {
+    null_extended_capability: u16,
+    version: u8,
+    next_capability_offset: u16,
+    command: u16,
+    status: u16,
+    revision_id: u8,
+    class_code: u32,
+    cache_line_size: u8,
+    header_type: u8,
+    bar0: u64,
+}
+
+unsafe fn read_chbs_registers(base_address: *const u8, length: usize) {
+    info!("Checking CHBCR");
+    let base = base_address.offset(0x1000) as *const u32;
+
+    let reg0 = base.offset(0).read();
+    let reg1 = base.offset(1).read();
+    let reg2 = base.offset(2).read();
+    let reg3 = base.offset(3).read();
+    let reg4 = base.offset(4).read();
+    let reg5 = base.offset(5).read();
+
+    info!("{:x}", reg4);
+    info!("{:x}", reg5);
+
+    let regs = RCHDownstreamPortRCRB {
+        null_extended_capability: (reg0 & 0xFFFF) as u16,
+        version: (reg0 >> 16 & 0xF) as u8,
+        next_capability_offset: (reg0 >> 20) as u16,
+        command: (reg1 & 0xFFFF) as u16,
+        status: (reg1 >> 16) as u16,
+        revision_id: (reg2 & 0xFF) as u8,
+        class_code: reg2 >> 8,
+        cache_line_size: (reg3 & 0xFF) as u8,
+        header_type: (reg3 >> 16 & 0xFF) as u8,
+        bar0: ((reg5 as u64) << 32) & (reg4 as u64)
+    };
+
+    info!("{:?}", regs);
+}
+
 pub fn test() {
     if let Ok(cedt) = acpi_tables().lock().find_table::<Cedt>() {
         info!("Found CEDT found");
@@ -185,6 +275,14 @@ pub fn test() {
 
         for s in structures {
             info!("{:?}", s);
+            if let CedtStructureType::CHBS(chbs) = s {
+                let start = chbs.base;
+                let length = chbs.length;
+                map_memory(start, length);
+                unsafe {
+                    read_chbs_registers(start as *const u8, length as usize);
+                }
+            }
         }
 
         let maybe_device: Option<&RwLock<EndpointHeader>> =
@@ -192,21 +290,28 @@ pub fn test() {
 
         if maybe_device.is_none() {
             info!("No PCIe device found");
-            return;
         }
 
-        let mut expander = maybe_device.unwrap().write();
+        let config_space = pci_bus().config_space();
+        let mut cxl_host_bridge = maybe_device.unwrap().write();
 
-        expander.update_command(pci_bus().config_space(), |command| {
+        cxl_host_bridge.update_command(config_space, |command| {
             command.bitor(CommandRegister::BUS_MASTER_ENABLE | CommandRegister::MEMORY_ENABLE)
         });
 
-        for s in 0..6 {
-            match expander.bar(s, pci_bus().config_space()) {
-                Some(bar) => info!("Bar {}: {:x}", s, bar.unwrap_io()),
-                None => info!("Not Bar {}", s),
-            }
+        info!(
+            "Capabilities Pointer: {}",
+            cxl_host_bridge.capability_pointer(config_space)
+        );
+        for cap in cxl_host_bridge.capabilities(config_space) {
+            info!("{:?}", cap);
         }
+
+        let x = unsafe { config_space.read(cxl_host_bridge.header().address(), 0x100) };
+        info!("Extended Cap: {:x}", x);
+
+        let (sub_system_id, vendor_id) = cxl_host_bridge.subsystem(config_space);
+        info!("Subsytem ID: {}, Vendor ID: {}", sub_system_id, vendor_id);
     } else {
         error!("No CEDT table found!");
     }
