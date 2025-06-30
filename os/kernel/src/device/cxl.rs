@@ -188,9 +188,9 @@ impl CXLFixedMemoryWindowStructure {
     }
 }
 
-fn map_memory(start: u64, length: u64) {
+fn map_memory(start: u64, start_physical: u64, length: u64) {
     let start_page = pages::page_from_u64(start).expect("CXL address is not page aligned");
-    let start_page_frame = frames::frame_from_u64(start).expect("CXL address is not page aligned");
+    let start_page_frame = frames::frame_from_u64(start_physical).expect("CXL address is not page aligned");
 
     let kernel_process: Arc<Process> = process_manager().read().kernel_process().unwrap();
 
@@ -198,7 +198,7 @@ fn map_memory(start: u64, length: u64) {
         .virtual_address_space
         .alloc_vma(
             Some(start_page),
-            length / PAGE_SIZE as u64,
+            length.div_ceil(PAGE_SIZE as u64) ,
             MemorySpace::Kernel,
             VmaType::DeviceMemory,
             "CXL",
@@ -236,34 +236,31 @@ struct RCHDownstreamPortRCRB {
     bar0: u64,
 }
 
-unsafe fn read_chbs_registers(base_address: *const u8, length: usize) {
-    info!("Checking CHBCR");
-    let base = base_address.offset(0x1000) as *const u32;
+impl RCHDownstreamPortRCRB {
+    unsafe fn from_base(base_address: *const u8) -> RCHDownstreamPortRCRB {
+        info!("Checking CHBCR");
+        // reading mmio only works in chunks of u32
+        let base = unsafe { base_address.offset(0x1000) as *const u32 };
+        let reg0 = unsafe { base.offset(0).read() };
+        let reg1 = unsafe { base.offset(1).read() };
+        let reg2 = unsafe { base.offset(2).read() };
+        let reg3 = unsafe { base.offset(3).read() };
+        let reg4 = unsafe { base.offset(4).read() };
+        let reg5 = unsafe { base.offset(5).read() };
 
-    let reg0 = base.offset(0).read();
-    let reg1 = base.offset(1).read();
-    let reg2 = base.offset(2).read();
-    let reg3 = base.offset(3).read();
-    let reg4 = base.offset(4).read();
-    let reg5 = base.offset(5).read();
-
-    info!("{:x}", reg4);
-    info!("{:x}", reg5);
-
-    let regs = RCHDownstreamPortRCRB {
-        null_extended_capability: (reg0 & 0xFFFF) as u16,
-        version: (reg0 >> 16 & 0xF) as u8,
-        next_capability_offset: (reg0 >> 20) as u16,
-        command: (reg1 & 0xFFFF) as u16,
-        status: (reg1 >> 16) as u16,
-        revision_id: (reg2 & 0xFF) as u8,
-        class_code: reg2 >> 8,
-        cache_line_size: (reg3 & 0xFF) as u8,
-        header_type: (reg3 >> 16 & 0xFF) as u8,
-        bar0: ((reg5 as u64) << 32) & (reg4 as u64)
-    };
-
-    info!("{:?}", regs);
+        RCHDownstreamPortRCRB {
+            null_extended_capability: (reg0 & 0xFFFF) as u16,
+            version: (reg0 >> 16 & 0xF) as u8,
+            next_capability_offset: (reg0 >> 20) as u16,
+            command: (reg1 & 0xFFFF) as u16,
+            status: (reg1 >> 16) as u16,
+            revision_id: (reg2 & 0xFF) as u8,
+            class_code: reg2 >> 8,
+            cache_line_size: (reg3 & 0xFF) as u8,
+            header_type: (reg3 >> 16 & 0xFF) as u8,
+            bar0: ((reg5 as u64) << 32) | (reg4 as u64),
+        }
+    }
 }
 
 pub fn test() {
@@ -276,12 +273,13 @@ pub fn test() {
         for s in structures {
             info!("{:?}", s);
             if let CedtStructureType::CHBS(chbs) = s {
-                let start = chbs.base;
+                let base = chbs.base;
                 let length = chbs.length;
-                map_memory(start, length);
-                unsafe {
-                    read_chbs_registers(start as *const u8, length as usize);
-                }
+                map_memory(base, base, length);
+                let regs = unsafe { RCHDownstreamPortRCRB::from_base(base as *const u8) };
+                let bar0_virt = 0x20000000;
+                info!("BAR0: {:016x}", regs.bar0);
+                map_memory(bar0_virt, regs.bar0, 1);
             }
         }
 
