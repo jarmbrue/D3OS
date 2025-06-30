@@ -14,11 +14,7 @@ use x86_64::{
 };
 
 use crate::{
-    acpi_tables,
-    memory::{MemorySpace, PAGE_SIZE, frames, pages, vma::VmaType},
-    pci_bus,
-    process::process::Process,
-    process_manager,
+    acpi_tables, device::{cxl, pci::PciBus}, memory::{frames, pages, vma::VmaType, MemorySpace, PAGE_SIZE}, pci_bus, process::process::Process, process_manager
 };
 
 #[repr(C, packed)]
@@ -263,6 +259,16 @@ impl RCHDownstreamPortRCRB {
     }
 }
 
+fn read_chbs_base(base: u64, length: u64) {
+    let base_ptr = base as *const u32;
+    for i in 0..length/4 {
+        let v = unsafe { base_ptr.offset(i as isize).read() };
+        if v != 0 {
+            info!("{:04x}: {:08x}", i*4, v);
+        }
+    }
+}
+
 pub fn test() {
     if let Ok(cedt) = acpi_tables().lock().find_table::<Cedt>() {
         info!("Found CEDT found");
@@ -270,12 +276,17 @@ pub fn test() {
         let structures = cedt.get_structure_headers();
         info!("Numer of CEDT Structures: {}", structures.len());
 
+        let mut cxl_bus: Option<PciBus> = None;
+
         for s in structures {
             info!("{:?}", s);
             if let CedtStructureType::CHBS(chbs) = s {
+                cxl_bus = Some(PciBus::scan(chbs.uid as u8));
+
                 let base = chbs.base;
                 let length = chbs.length;
                 map_memory(base, base, length);
+                read_chbs_base(base, length);
                 let regs = unsafe { RCHDownstreamPortRCRB::from_base(base as *const u8) };
                 let bar0_virt = 0x20000000;
                 info!("BAR0: {:016x}", regs.bar0);
@@ -283,33 +294,13 @@ pub fn test() {
             }
         }
 
-        let maybe_device: Option<&RwLock<EndpointHeader>> =
-            pci_bus().search_by_ids(0x1b36, 0x000b).pop();
-
-        if maybe_device.is_none() {
-            info!("No PCIe device found");
+        if let Some(cxl_bus) = cxl_bus {
+            let config_space = cxl_bus.config_space();
+            for dev in &cxl_bus.devices {
+                info!("{:?}", dev.read().header().revision_and_class(config_space));
+            }
         }
 
-        let config_space = pci_bus().config_space();
-        let mut cxl_host_bridge = maybe_device.unwrap().write();
-
-        cxl_host_bridge.update_command(config_space, |command| {
-            command.bitor(CommandRegister::BUS_MASTER_ENABLE | CommandRegister::MEMORY_ENABLE)
-        });
-
-        info!(
-            "Capabilities Pointer: {}",
-            cxl_host_bridge.capability_pointer(config_space)
-        );
-        for cap in cxl_host_bridge.capabilities(config_space) {
-            info!("{:?}", cap);
-        }
-
-        let x = unsafe { config_space.read(cxl_host_bridge.header().address(), 0x100) };
-        info!("Extended Cap: {:x}", x);
-
-        let (sub_system_id, vendor_id) = cxl_host_bridge.subsystem(config_space);
-        info!("Subsytem ID: {}, Vendor ID: {}", sub_system_id, vendor_id);
     } else {
         error!("No CEDT table found!");
     }

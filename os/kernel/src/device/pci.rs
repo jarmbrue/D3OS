@@ -10,7 +10,7 @@ const INVALID: u16 = 0xffff;
 
 pub struct PciBus {
     config_space: ConfigurationSpace,
-    devices: Vec<RwLock<EndpointHeader>>
+    pub devices: Vec<RwLock<EndpointHeader>>
 }
 
 pub struct ConfigurationSpace {
@@ -65,10 +65,11 @@ impl ConfigRegionAccess for ConfigurationSpace {
 }
 
 impl PciBus {
-    pub fn scan() -> Self {
+    pub fn scan(bus_number: u8) -> Self {
         let mut pci = Self { config_space: ConfigurationSpace::new(), devices: Vec::new() };
 
-        let root = PciHeader::new(PciAddress::new(0x8000, 0, 0, 0));
+        let root_address = PciAddress::new(0x8000, bus_number, 0, 0);
+        let root = PciHeader::new(root_address);
         if root.has_multiple_functions(&pci.config_space) {
             info!("Multiple PCI host controllers detected");
             for i in 0..MAX_FUNCTIONS_PER_DEVICE {
@@ -82,7 +83,7 @@ impl PciBus {
             }
         } else {
             info!("Single PCI host controller detected");
-            pci.scan_bus(PciAddress::new(0x8000, 0, 0, 0));
+            pci.scan_bus(root_address);
         }
 
 
@@ -99,6 +100,7 @@ impl PciBus {
             .filter(|device| device.read().header().id(self.config_space()) == (vendor_id, device_id))
             .collect()
     }
+
 
     pub fn search_by_class(&self, base_class: BaseClass, sub_class: SubClass) -> Vec<&RwLock<EndpointHeader>> {
         self.devices.iter()

@@ -75,6 +75,7 @@ pub mod built_info {
 fn panic(info: &PanicInfo) -> ! {
     if terminal_initialized() {
         println!("Panic: {}", info);
+        error!("Panic: {}", info);
     } else {
         let args = [info.message().as_str().unwrap_or("(no message provided)")];
         let record = Record::builder()
@@ -396,7 +397,7 @@ pub fn keyboard() -> Option<Arc<Keyboard>> {
 static PCI: Once<PciBus> = Once::new();
 
 pub fn init_pci() {
-    PCI.call_once(PciBus::scan);
+    PCI.call_once(||PciBus::scan(0));
 }
 
 pub fn pci_bus() -> &'static PciBus {
