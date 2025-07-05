@@ -2,16 +2,12 @@ use alloc::vec::Vec;
 use core::ptr;
 use acpi::sdt::{SdtHeader, Signature};
 use log::info;
-use crate::{acpi_tables, process_manager};
-use acpi::{AcpiTable};
-use x86_64::{PhysAddr, VirtAddr};
-use crate::device::pci::PciBus;
-use crate::memory::cxl::{CEDT, CEDTStructureHeader, CXLFixedMemoryWindowStructure, CXLHostBridgeStructure};
-use crate::memory::nvmem::SystemPhysicalAddressRange;
+use crate::acpi_tables;
+use acpi::AcpiTable;
+use x86_64::PhysAddr;
 use x86_64::structures::paging::frame::PhysFrameRange;
-use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
-use x86_64::structures::paging::page::PageRange;
-use crate::memory::{MemorySpace, PAGE_SIZE};
+use x86_64::structures::paging::PhysFrame;
+use crate::memory::PAGE_SIZE;
 
 #[repr(C, packed)]
 #[derive(Debug, Clone, Copy)]

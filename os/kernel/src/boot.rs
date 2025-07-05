@@ -8,6 +8,7 @@
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
+use crate::device::acpi::cedt::CEDT;
 use crate::device::pit::Timer;
 use crate::device::ps2::Keyboard;
 use crate::device::qemu_cfg;
@@ -17,8 +18,12 @@ use crate::memory::frames;
 use crate::memory::nvmem::Nfit;
 use crate::memory::pages;
 use crate::memory::pages::page_table_index;
+<<<<<<< HEAD
 use crate::memory::vma::VmaType;
 use crate::memory::{MemorySpace, PAGE_SIZE, nvmem};
+=======
+use crate::memory::{MemorySpace, PAGE_SIZE, nvmem, cxl};
+>>>>>>> 8ac2b89 (move acpi tables to device/acpi)
 use crate::network::rtl8139;
 use crate::process::thread::Thread;
 use crate::syscall::syscall_dispatcher;
@@ -32,7 +37,6 @@ use alloc::format;
 use alloc::string::ToString;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use core::any::Any;
 use chrono::DateTime;
 use core::ffi::c_void;
 use core::mem::size_of;
@@ -63,7 +67,7 @@ use x86_64::structures::gdt::Descriptor;
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::{PageTable, PageTableFlags, PhysFrame};
 use x86_64::{PhysAddr, VirtAddr};
-use crate::memory::cxl::{CXLCapabilityHeader, CXLHDMDecoderCapabilityRegister, CXLHDMDecoderGlobalControlRegister, GeneralCXLCapabilityHeader, CEDT, CXLHDMDECODER_CAPABILITY, CXL_ARB_MUX_REGISTER_OFFSET, CXL_CACHE_MEM_PRIMARY_RANGE_OFFSET};
+use crate::memory::cxl::{CXLCapabilityHeader, CXLHDMDecoderCapabilityRegister, CXLHDMDecoderGlobalControlRegister, GeneralCXLCapabilityHeader, CXLHDMDECODER_CAPABILITY, CXL_ARB_MUX_REGISTER_OFFSET, CXL_CACHE_MEM_PRIMARY_RANGE_OFFSET};
 
 // import labels from linker script 'link.ld'
 unsafe extern "C" {
