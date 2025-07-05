@@ -89,6 +89,28 @@ impl PciBus {
         pci
     }
 
+    pub fn scan_by_nr(bus_nr:u8) -> Self {
+        let mut pci = Self { config_space: ConfigurationSpace::new(), devices: Vec::new() };
+        let root = PciHeader::new(PciAddress::new(0x8000, bus_nr, 0, 0));
+        if root.has_multiple_functions(&pci.config_space) {
+            info!("Multiple PCI host controllers detected");
+            for i in 0..MAX_FUNCTIONS_PER_DEVICE {
+                let address = PciAddress::new(0x8000, bus_nr, 0, i);
+                let header = PciHeader::new(address);
+                if header.id(&pci.config_space).0 == INVALID {
+                    break;
+                }
+
+                pci.scan_bus(address);
+            }
+        } else {
+            info!("Single PCI host controller detected on non 0 pci bus");
+            pci.scan_bus(PciAddress::new(0x8000, bus_nr, 0, 0));
+        }
+
+        return pci;
+    }
+
     #[inline(always)]
     pub fn config_space(&self) -> &ConfigurationSpace {
         &self.config_space
@@ -153,6 +175,30 @@ impl PciBus {
         } else {
             info!("Found PCI device [0x{:0>4x}:0x{:0>4x}] on bus [{}]", id.0, id.1, address.bus());
             self.devices.push(RwLock::new(EndpointHeader::from_header(device, self.config_space()).unwrap()));
+        }
+    }
+
+    pub fn dump_devices(&self){
+        info!("alle gefundenen devices sind");
+        for endpoint_header in &self.devices{
+            let (subsystemid, subsystem_vendor_id) = endpoint_header.read().subsystem(&self.config_space);
+            info!("finde endpoint: subsystem is {:?}, subsystem_vendor_id is {:?}", subsystemid, subsystem_vendor_id);
+        }
+    }
+
+    pub fn dump_devices_status_registers(&self){
+        info!("alle gefundenen devices sind");
+        for endpoint_header in &self.devices{
+            let status = endpoint_header.read().status(&self.config_space);
+            info!("finde endpoint: status is {:?}", status);
+        }
+    }
+
+    pub fn dump_devices_command_registers(&self){
+        info!("alle gefundenen devices sind");
+        for endpoint_header in &self.devices{
+            let command = endpoint_header.read().command(&self.config_space);
+            info!("finde endpoint: command is {:?}", command);
         }
     }
 }

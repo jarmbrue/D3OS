@@ -62,6 +62,9 @@ pub enum InterruptVector {
     SecondaryAta = 0x2f,
     // Possibly some other interrupts supported by IO APICs
 
+    // interrupts for cxl messages
+    ARB = 0x30,
+
     // Local APIC interrupts (247 - 254)
     Cmci = 0xf8,
     ApicTimer = 0xf9,
@@ -162,7 +165,7 @@ impl TryFrom<u8> for InterruptVector {
             value if value == InterruptVector::SecondaryAta as u8 => {
                 Ok(InterruptVector::SecondaryAta)
             }
-
+            value if value == InterruptVector::ARB as u8 => Ok(InterruptVector::ARB),
             value if value == InterruptVector::Cmci as u8 => Ok(InterruptVector::Cmci),
             value if value == InterruptVector::ApicTimer as u8 => Ok(InterruptVector::ApicTimer),
             value if value == InterruptVector::Thermal as u8 => Ok(InterruptVector::Thermal),
