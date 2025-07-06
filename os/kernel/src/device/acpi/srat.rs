@@ -1,19 +1,18 @@
+use crate::acpi_tables;
+use crate::memory::PAGE_SIZE;
+use acpi::AcpiTable;
+use acpi::sdt::{SdtHeader, Signature};
 use alloc::vec::Vec;
 use core::ptr;
-use acpi::sdt::{SdtHeader, Signature};
 use log::info;
-use crate::acpi_tables;
-use acpi::AcpiTable;
 use x86_64::PhysAddr;
-use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::PhysFrame;
-use crate::memory::PAGE_SIZE;
+use x86_64::structures::paging::frame::PhysFrameRange;
 
 #[repr(C, packed)]
 #[derive(Debug, Clone, Copy)]
 pub struct SRAT {
     header: SdtHeader,
-
 }
 #[allow(dead_code)]
 #[repr(u8)]
@@ -127,7 +126,7 @@ pub struct GenericInitiatorAffinityStructure {
     proximity_domain: u32,
     device_handle: u128,
     flags: u32,
-    reserved_2:u32,
+    reserved_2: u32,
 }
 
 #[repr(C, packed)]
@@ -169,8 +168,12 @@ impl SRAT {
                 tables.push(structure_ptr.as_ref().expect("Invalid Srat structure"));
                 info!("gefundene Structure is {:?}", structure);
 
-                structure_ptr = (structure_ptr as *const u8).add(structure.length as usize) as *const SratStructureHeader;
-                info!("remaining = {:?} und recordlen = {:?}", remaining, structure.length as usize);
+                structure_ptr = (structure_ptr as *const u8).add(structure.length as usize)
+                    as *const SratStructureHeader;
+                info!(
+                    "remaining = {:?} und recordlen = {:?}",
+                    remaining, structure.length as usize
+                );
                 remaining = remaining - structure.length as usize;
             }
             info!("Found Srat Structure");
@@ -179,8 +182,7 @@ impl SRAT {
         return tables;
     }
 
-
-    pub fn get_memory_structures (&self) -> Vec<&MemoryAffinityStructure> {
+    pub fn get_memory_structures(&self) -> Vec<&MemoryAffinityStructure> {
         let mut structures = Vec::<&MemoryAffinityStructure>::new();
 
         self.get_structures().iter().for_each(|structure| {
@@ -194,52 +196,57 @@ impl SRAT {
     }
 }
 
-impl MemoryAffinityStructure{
+impl MemoryAffinityStructure {
     pub fn as_phys_frame_range(&self) -> PhysFrameRange {
-        let address:u64 = (self.base_addr_high as u64) << 32 | (self.base_addr_low as u64);
-        let length:u64 = (self.length_high as u64) << 32 | (self.length_low as u64);
-        let start = PhysFrame::from_start_address(PhysAddr::new(address)).expect("Invalid start address");
+        let address: u64 = (self.base_addr_high as u64) << 32 | (self.base_addr_low as u64);
+        let length: u64 = (self.length_high as u64) << 32 | (self.length_low as u64);
+        let start =
+            PhysFrame::from_start_address(PhysAddr::new(address)).expect("Invalid start address");
 
-        return PhysFrameRange { start, end: start + (length / PAGE_SIZE as u64) };
+        return PhysFrameRange {
+            start,
+            end: start + (length / PAGE_SIZE as u64),
+        };
     }
 }
 
 impl SratStructureHeader {
     pub fn as_structure<T>(&self) -> &T {
         unsafe {
-            ptr::from_ref(self).cast::<T>().as_ref().expect("Invalid Srat structure")
+            ptr::from_ref(self)
+                .cast::<T>()
+                .as_ref()
+                .expect("Invalid Srat structure")
         }
     }
 }
-
 
 pub fn init() {
     if let Ok(srat) = acpi_tables().lock().find_table::<SRAT>() {
         //info!("Found SRAT table");
         let structures = srat.get_structures();
-        for structure in structures{
-            if structure.typ == SratStructureType::ProcessorLocalApicAffinityStructure{
+        for structure in structures {
+            if structure.typ == SratStructureType::ProcessorLocalApicAffinityStructure {
                 let current: &ProcessorLocalApicAffinityStructure = structure.as_structure();
                 //info!("ProcessorLocalApicAffinityStructure ist {:?}", current);
-            }else if structure.typ == SratStructureType::MemoryAffinityStructure{
+            } else if structure.typ == SratStructureType::MemoryAffinityStructure {
                 let current: &MemoryAffinityStructure = structure.as_structure();
                 //info!("MemoryAffinityStructure ist {:?}", current);
-            }else if structure.typ == SratStructureType::ProcessorLocalX2apicAffinityStructure {
+            } else if structure.typ == SratStructureType::ProcessorLocalX2apicAffinityStructure {
                 let current: &ProcessorLocalX2apicAffinityStructure = structure.as_structure();
-               // info!("ProcessorLocalX2apicAffinityStructure ist {:?}", current);
-            }else if structure.typ == SratStructureType::GiccAffinityStructure {
+                // info!("ProcessorLocalX2apicAffinityStructure ist {:?}", current);
+            } else if structure.typ == SratStructureType::GiccAffinityStructure {
                 let current: &GiccAffinityStructure = structure.as_structure();
                 //info!("GiccAffinityStructure ist {:?}", current);
-            }else if structure.typ == SratStructureType::ArchitectureSpecificAffinityStructure {
+            } else if structure.typ == SratStructureType::ArchitectureSpecificAffinityStructure {
                 let current: &ArchitectureSpecificAffinityStructure = structure.as_structure();
-               // info!("ArchitectureSpecificAffinityStructure ist {:?}", current);
-            }else if structure.typ == SratStructureType::GenericInitiatorAffinityStructure {
+                // info!("ArchitectureSpecificAffinityStructure ist {:?}", current);
+            } else if structure.typ == SratStructureType::GenericInitiatorAffinityStructure {
                 let current: &GenericInitiatorAffinityStructure = structure.as_structure();
                 //info!("GenericInitiatorAffinityStructure ist {:?}", current);
-            }else{
-               // info!("unknown structure");
+            } else {
+                // info!("unknown structure");
             }
-
         }
         // Given addr does not work properly
         /*
@@ -257,5 +264,30 @@ pub fn init() {
                 .map(PageRange { start: start_page, end: start_page + (length / PAGE_SIZE as u64) }, MemorySpace::Kernel, PageTableFlags::PRESENT | PageTableFlags::WRITABLE);
         }
         */
+    }
+}
+
+pub fn demo() {
+    // As a demo for SRAT support, we read the last boot time from NVRAM and write the current boot time to it
+    if let Ok(srat) = acpi_tables().lock().find_table::<SRAT>() {
+        if let Some(memstruct) = srat.get_memory_structures().first() {
+            let count_ptr = memstruct
+                .as_phys_frame_range()
+                .start
+                .start_address()
+                .as_u64() as *mut u64;
+
+            // Read last boot time from SRAT Memory Structure
+            let mut count = unsafe { count_ptr.read() };
+            info!("das System wurde {} Mal gestartet", count);
+
+            // Write current boot time to NVRAM
+            if count > 100 {
+                count = 0;
+            } else {
+                count += 1;
+            }
+            unsafe { count_ptr.write(count) }
+        }
     }
 }

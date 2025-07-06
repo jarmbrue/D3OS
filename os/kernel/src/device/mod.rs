@@ -1,5 +1,6 @@
 pub mod acpi;
 pub mod apic;
+pub mod cxl;
 pub mod pit;
 pub mod ps2;
 pub mod qemu_cfg;

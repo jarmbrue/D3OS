@@ -11,7 +11,7 @@
 use crate::device::acpi::cedt::CEDT;
 use crate::device::pit::Timer;
 use crate::device::ps2::Keyboard;
-use crate::device::qemu_cfg;
+use crate::device::{cxl, qemu_cfg};
 use crate::device::serial::SerialPort;
 use crate::interrupt::interrupt_dispatcher;
 use crate::memory::frames;
@@ -296,29 +296,6 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     // Initialize network stack
     network::init();
 
-    let drive = storage::block_device("ata0").unwrap();
-    let mut buffer = [0; 8192];
-
-    // Fill buffer with some data
-    for i in 0..8192 {
-        buffer[i] = i as u8;
-    }
-    // Write data to the third sector of the drive
-    drive.write(3, 16, &mut buffer);
-
-    // Fill buffer with zeroes
-    for i in 0..8192 {
-        buffer[i] = 0;
-    }
-    // Read data from the third sector of the drive
-    drive.read(3, 16, &mut buffer);
-
-    // Check integrity of read data
-    for i in 0..8192 {
-        if buffer[i] != (i as u8) {
-            panic!("Data integrity check failed!");
-        }
-    }
     // Set up network interface for emulated QEMU network (IP: 10.0.2.15, Gateway: 10.0.2.2)
     if let Some(rtl8139) = rtl8139()
         && qemu_cfg::is_available()
@@ -346,82 +323,6 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
 
     // Initialize non-volatile memory (creates identity mappings for any non-volatile memory regions)
     nvmem::init();
-
-    //init cxl
-    cxl::init();
-
-    //init srat
-    //srat::init();
-    info!("test");
-
-
-    // as a demo for cl support we take a closer look to the cxl host bridge component registers
-    if let Ok(cedt) = acpi_tables().lock().find_table::<CEDT>() {
-        if let Some(range) = cedt.get_host_bridge_structures().first() {
-            let data_ptr = range.as_phys_frame_range().start.start_address().as_u64() as *mut u8;       //20456  das ist die höchste Addr die geht
-            info!("datapointer ist {:?}", data_ptr);
-
-            unsafe {
-
-                // hier werden alle capabilities gescannt:
-                let cxl_capability_header = data_ptr.offset(CXL_CACHE_MEM_PRIMARY_RANGE_OFFSET as isize) as *mut CXLCapabilityHeader;
-                info!("general capability header: {:?} liegt an adresse {:?}", cxl_capability_header.read(), cxl_capability_header);
-                let end = cxl_capability_header.read().get_len();
-                for i in 1..end{
-                    let current_capability = data_ptr.offset((CXL_CACHE_MEM_PRIMARY_RANGE_OFFSET + 4 * i) as isize) as *mut GeneralCXLCapabilityHeader;
-                    let read_capability = current_capability.read();
-                    info!("found capability: {:?}", read_capability);
-
-
-                    // gerade wird die hdm decoder capability structure benoetigt
-                    if read_capability.get_type() == CXLHDMDECODER_CAPABILITY{
-                        // springe nun zu dem Pointer, der Capability
-
-                        //achtung: immer vom data pointer ausgehen, denn .offset (a + b ) != .offset(a).offset(b)
-                        let offset_to_capability = read_capability.get_pointer();
-                        let hdm_addr = data_ptr.offset((offset_to_capability + CXL_CACHE_MEM_PRIMARY_RANGE_OFFSET) as isize) as *mut CXLHDMDecoderCapabilityRegister;
-                        let hdm_decoder_global_cr = data_ptr.offset((offset_to_capability + CXL_CACHE_MEM_PRIMARY_RANGE_OFFSET +4) as isize) as *mut CXLHDMDecoderGlobalControlRegister;
-                        info!("found decoder capability: {:?}", hdm_addr.read());
-                        info!("found global decoder capability: {:?}", hdm_decoder_global_cr.read());
-
-
-                        let cxl_hdm_decoder0_base_low_register = data_ptr.offset((offset_to_capability + CXL_CACHE_MEM_PRIMARY_RANGE_OFFSET +16) as isize) as *mut u32;
-                        let cxl_hdm_decoder0_base_high_register = data_ptr.offset((offset_to_capability + CXL_CACHE_MEM_PRIMARY_RANGE_OFFSET +20) as isize) as *mut u32;
-                        let cxl_hdm_decoder0_size_low_register = data_ptr.offset((offset_to_capability + CXL_CACHE_MEM_PRIMARY_RANGE_OFFSET +24) as isize) as *mut u32;
-                        let cxl_hdm_decoder0_size_high_register = data_ptr.offset((offset_to_capability + CXL_CACHE_MEM_PRIMARY_RANGE_OFFSET +28) as isize) as *mut u32;
-                        let cxl_hdm_decoder0_control_register = data_ptr.offset((offset_to_capability + CXL_CACHE_MEM_PRIMARY_RANGE_OFFSET +32) as isize) as *mut u32;
-                        let cxl_hdm_decoder0_target_list_low_register = data_ptr.offset((offset_to_capability + CXL_CACHE_MEM_PRIMARY_RANGE_OFFSET +36) as isize) as *mut u32;
-                        let cxl_hdm_decoder0_target_list_high_register = data_ptr.offset((offset_to_capability + CXL_CACHE_MEM_PRIMARY_RANGE_OFFSET +40) as isize) as *mut u32;
-                        let reserved = data_ptr.offset((offset_to_capability + CXL_CACHE_MEM_PRIMARY_RANGE_OFFSET +44) as isize) as *mut u32;
-                        info!("decoder0 {:?}", cxl_hdm_decoder0_base_low_register.read());
-                        info!("decoder0 {:?}", cxl_hdm_decoder0_base_high_register.read());
-                        info!("decoder0 {:?}", cxl_hdm_decoder0_size_low_register.read());
-                        info!("decoder0 {:?}", cxl_hdm_decoder0_size_high_register.read());
-                        info!("decoder0 {:?}", cxl_hdm_decoder0_control_register.read());
-                        info!("decoder0 {:?}", cxl_hdm_decoder0_target_list_low_register.read());
-                        info!("decoder0 {:?}", cxl_hdm_decoder0_target_list_high_register.read());
-                    }
-                }
-
-
-
-
-                // hier wird das erste register an dem offset der cxl arb mux aus den component registern gelesen
-                let tm_control = data_ptr.offset(CXL_ARB_MUX_REGISTER_OFFSET as isize) as *mut u32;      // das Register hat die groesse u32 und muss vollständig gelesen werden
-                info!("Timeout control: {:x}", tm_control.read());
-
-                let error_status = data_ptr.offset((CXL_ARB_MUX_REGISTER_OFFSET +4)as isize) as *mut u32;
-                info!("error status: {:x}", error_status.read());
-                let error_mask = data_ptr.offset((CXL_ARB_MUX_REGISTER_OFFSET +8)as isize) as *mut u32;
-                info!("error mask: {:x}", error_mask.read());
-            }
-
-            // Read last boot time from NVRAM
-            let data = unsafe { data_ptr.offset(CXL_ARB_MUX_REGISTER_OFFSET as isize).read() };                    // Hier ist das Problem
-            // auf das array kann nicht zugegriffen werden
-            //info!("found data is: {:?}", data.get_cxlcachemem_primary_range());
-        }
-    }
 
     // As a demo for NVRAM support, we read the last boot time from NVRAM and write the current boot time to it
     if let Ok(nfit) = acpi_tables().lock().find_table::<Nfit>() {
@@ -451,52 +352,11 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         }
     }
 
-    // As a demo for cxl support using a hardcoded addr we found in the system using info pci, we read the last boot time from NVRAM and write the current boot time to it
-
-
-    /*let date_ptr3 = 0x81800000 as *mut Time;
-    info!("--------- date ptr cxl_hardcoded ist {:?}", date_ptr3);
-            // Read last boot time from NVRAM
-    let date = unsafe { date_ptr3.read() };
-    if date.is_valid().is_ok() {
-        info!("Last boot time hardcoced: [{:0>4}-{:0>2}-{:0>2} {:0>2}:{:0>2}:{:0>2}]", date.year(), date.month(), date.day(), date.hour(), date.minute(), date.second());
-    }else{
-        info!("hardcoded time not found");
-    }
-
-
-    if efi_services_available() {
-        if let Ok(time) = uefi::runtime::get_time() {
-            unsafe {
-                info!("current time is {:?}", time);
-                date_ptr3.write(time);
-                let written = date_ptr3.read();
-                info!("wrote time {:?}", written);
-            }
-        }
-    }*/
-
-
-
-
-    // As a demo for SRAT support, we read the last boot time from NVRAM and write the current boot time to it
-    /*if let Ok(srat) = acpi_tables().lock().find_table::<SRAT>() {
-        if let Some(memstruct) = srat.get_memory_structures().first() {
-            let count_ptr = memstruct.as_phys_frame_range().start.start_address().as_u64() as *mut u64;
-
-            // Read last boot time from SRAT Memory Structure
-            let mut count = unsafe { count_ptr.read() };
-            info!("das System wurde {} Mal gestartet", count);
-
-            // Write current boot time to NVRAM
-            if count > 100{
-                count = 0;
-            }else{
-                count += 1;
-            }
-            unsafe {count_ptr.write(count)}
-        }
-    }*/
+    //init cxl
+    cxl::init();
+    cxl::demo();
+    //cxl::demo_hardcoded_addr();
+    //srat::demo();
 
     // Init naming service
     naming::api::init();
