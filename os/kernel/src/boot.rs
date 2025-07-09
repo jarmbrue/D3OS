@@ -63,7 +63,7 @@ use x86_64::structures::gdt::Descriptor;
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::{PageTable, PageTableFlags, PhysFrame};
 use x86_64::{PhysAddr, VirtAddr};
-use crate::memory::cxl::{CXLCapabilityHeader, CXLHDMDecoderCapabilityRegister, CXLHDMDecoderGlobalControlRegister, GeneralCXLCapabilityHeader, CXLHDMDECODER_CAPABILITY, CXL_ARB_MUX_REGISTER_OFFSET, CXL_CACHE_MEM_PRIMARY_RANGE_OFFSET};
+use crate::device::cxl::{CXLCapabilityHeader, CXLHDMDecoderCapabilityRegister, CXLHDMDecoderGlobalControlRegister, GeneralCXLCapabilityHeader, CXLHDMDECODER_CAPABILITY, CXL_ARB_MUX_REGISTER_OFFSET, CXL_CACHE_MEM_PRIMARY_RANGE_OFFSET};
 
 // import labels from linker script 'link.ld'
 unsafe extern "C" {

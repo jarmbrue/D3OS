@@ -2,13 +2,14 @@ use crate::device::acpi::cedt::{
     CEDT, CEDTStructureType, CXLFixedMemoryWindowStructure, CXLHostBridgeStructure,
 };
 use crate::device::pci::PciBus;
-use crate::memory::vmm::VmaType;
+use crate::memory::vma::VmaType;
 use crate::memory::{MemorySpace, PAGE_SIZE};
-use crate::{acpi_tables, pci_bus, process_manager};
+use crate::{acpi_tables, efi_services_available, pci_bus, process_manager};
 use acpi::AcpiTable;
 use alloc::borrow::ToOwned;
 use alloc::vec::Vec;
 use bitfield_struct::bitfield;
+use uefi::runtime::Time;
 use core::ptr;
 use log::info;
 use x86_64::structures::paging::frame::PhysFrameRange;
@@ -140,7 +141,7 @@ impl GeneralCXLCapabilityHeader {
     }
 }*/
 
-pub fn foo() {
+pub fn init() {
     // as a demo for cl support we take a closer look to the cxl host bridge component registers
     if let Ok(cedt) = acpi_tables().lock().find_table::<CEDT>() {
         if let Some(range) = cedt.get_host_bridge_structures().first() {
@@ -364,11 +365,8 @@ pub fn demo() {
                 .kernel_process()
                 .expect("Failed to get kernel process")
                 .virtual_address_space
-                .map(
-                    PageRange {
-                        start: start_page,
-                        end: start_page + (length / PAGE_SIZE as u64),
-                    },
+                .alloc_vma(
+                    start_page,
                     MemorySpace::Kernel,
                     PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
                     VmaType::DeviceMemory,
