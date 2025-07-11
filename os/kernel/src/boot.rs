@@ -350,9 +350,6 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
 
     //init cxl
     cxl::init();
-    cxl::demo();
-    //cxl::demo_hardcoded_addr();
-    //srat::demo();
 
     // Init naming service
     naming::api::init();
