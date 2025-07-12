@@ -3,11 +3,12 @@ pub mod capabilities;
 use crate::device::acpi::cedt::{
     CEDT, CEDTStructureType, CXLFixedMemoryWindowStructure, CXLHostBridgeStructure,
 };
-use crate::device::cxl::capabilities::{get_capabilities, CXLCapability};
+use crate::device::cxl::capabilities::{CXLCapability, CXLCapabilityIterator};
 use crate::device::pci::PciBus;
 use crate::memory::vma::VmaType;
 use crate::memory::{MemorySpace, PAGE_SIZE};
 use crate::{acpi_tables, efi_services_available, pci_bus, process_manager};
+use acpi::AcpiTable;
 use bitfield_struct::bitfield;
 use log::info;
 use uefi::runtime::Time;
@@ -32,52 +33,6 @@ pub const CXL_IO_REGISTER_OFFSET: usize = 0;
 pub const CXL_CACHE_MEM_PRIMARY_RANGE_OFFSET: usize = 1024 * 4;
 pub const IMPLEMENTATION_SPECIFIC_OFFEST: usize = 1024 * 4 + 1024 * 4;
 pub const CXL_ARB_MUX_REGISTER_OFFSET: usize = 1024 * 4 + 1024 * 4 + 1024 * 48;
-
-// enum passt wegen bitfield nicht
-pub const CXLNULL_CAPABILITY: usize = 0;
-pub const CXLCAPABILITY: usize = 1;
-pub const CXLRAS_CAPABILITY: usize = 2;
-pub const CXLSECURITY_CAPABILITY: usize = 3;
-pub const CXLLINK_CAPABILITY: usize = 4;
-pub const CXLHDMDECODER_CAPABILITY: usize = 5;
-pub const CXLEXTENDED_SECURITY_CAPABILITY: usize = 6;
-pub const CXKIDECAPABILITY: usize = 7;
-pub const CXLSNOOP_FILTER_CAPABILITY: usize = 8;
-pub const CXLTIMEOUTAND_ISOLATION_CAPABILITY: usize = 9;
-pub const CXLCACHEMEM_EXTENDED_REGISTER_CAPABILITY: usize = 10;
-pub const CXLBIROUTE_TABLE_CAPABILITY: usize = 11;
-pub const CXLBIDECODER_CAPABILITY: usize = 12;
-pub const CXLCACHE_IDROUTE_TABLE_CAPABILITY: usize = 13;
-pub const CXLCACHE_IDDECODER_CAPABILITY: usize = 14;
-pub const CXLEXTENDED_HDMDECODER_CAPABILITY: usize = 15;
-pub const CXLEXTENDED_METADATA_CAPABILITY: usize = 16;
-
-#[bitfield(u32)]
-pub struct CXLCapabilityHeader {
-    #[bits(16)]
-    cxl_capability_id: usize,
-
-    #[bits(4)]
-    cxl_capability_version: usize,
-
-    #[bits(4)]
-    cxl_cache_mem_version: usize,
-
-    #[bits(8)]
-    array_size: usize,
-}
-
-#[bitfield(u32)]
-pub struct GeneralCXLCapabilityHeader {
-    #[bits(16)]
-    cxl_capability_id: usize,
-
-    #[bits(4)]
-    cxl_capability_version: usize,
-
-    #[bits(12)]
-    cxl_capability_pointer: usize,
-}
 
 #[bitfield(u32)]
 pub struct CXLHDMDecoderCapabilityRegister {
@@ -118,27 +73,6 @@ pub struct CXLHDMDecoderGlobalControlRegister {
     #[bits(30)]
     reserved: usize,
 }
-
-impl CXLCapabilityHeader {
-    pub fn get_len(&self) -> usize {
-        return self.array_size();
-    }
-}
-
-impl GeneralCXLCapabilityHeader {
-    pub fn get_type(&self) -> usize {
-        return self.cxl_capability_id();
-    }
-    pub fn get_pointer(&self) -> usize {
-        return self.cxl_capability_pointer();
-    }
-}
-
-/*impl CXLHostBridgeComponentRegisterRanges{
-    pub fn get_cxlcachemem_primary_range(&self) ->CXLCapabilityHeader{
-        return self.cxl_cap_header;
-    }
-}*/
 
 fn map_registers(chbs: &CXLHostBridgeStructure) -> PageRange {
     let address: u64 = chbs.base;
@@ -185,6 +119,68 @@ fn map_registers(chbs: &CXLHostBridgeStructure) -> PageRange {
     vma.range()
 }
 
+pub fn hexdump(address: *const u8, count: usize, chunk_size: usize, chunks_per_line: usize) {
+    use log::info;
+
+    for line_start in (0..count).step_by(chunk_size * chunks_per_line) {
+        let mut line = [0u8; 256];
+        let mut pos = 0;
+
+        // Write address
+        pos += format_hex_to_buf(
+            &mut line[pos..],
+            unsafe { address.add(line_start) } as usize,
+            8,
+        );
+        line[pos] = b':';
+        line[pos + 1] = b' ';
+        pos += 2;
+
+        // Write hex values
+        for chunk_idx in 0..chunks_per_line {
+            let byte_offset = line_start + chunk_idx * chunk_size;
+            if byte_offset >= count {
+                break;
+            }
+
+            match chunk_size {
+                1 => {
+                    let value = unsafe { address.add(byte_offset).read() as u8 };
+                    pos += format_hex_to_buf(&mut line[pos..], value as usize, 2);
+                }
+                2 => {
+                    let value = unsafe { (address.add(byte_offset) as *const u16).read() };
+                    pos += format_hex_to_buf(&mut line[pos..], value as usize, 4);
+                }
+                4 => {
+                    let value = unsafe { (address.add(byte_offset) as *const u32).read() };
+                    pos += format_hex_to_buf(&mut line[pos..], value as usize, 8);
+                }
+                8 => {
+                    let value = unsafe { (address.add(byte_offset) as *const u64).read() };
+                    pos += format_hex_to_buf(&mut line[pos..], value as usize, 16);
+                }
+                _ => return,
+            }
+            line[pos] = b' ';
+            pos += 1;
+        }
+
+        let line_str = core::str::from_utf8(&line[..pos]).unwrap_or("");
+        info!("{}", line_str);
+    }
+}
+
+fn format_hex_to_buf(buf: &mut [u8], mut value: usize, width: usize) -> usize {
+    const HEX_CHARS: &[u8; 16] = b"0123456789abcdef";
+
+    for i in 0..width {
+        buf[width - 1 - i] = HEX_CHARS[value & 0xf];
+        value >>= 4;
+    }
+    width
+}
+
 pub fn demo_capabilities(chbs: &CXLHostBridgeStructure) {
     let register_pages = map_registers(chbs);
     let primary_range = register_pages
@@ -192,8 +188,19 @@ pub fn demo_capabilities(chbs: &CXLHostBridgeStructure) {
         .nth(1)
         .expect("Primary Range not contained in CHBS range");
 
-    for capability in get_capabilities(&primary_range).expect("There should be CXL Capabilities"){
+    for capability in CXLCapabilityIterator::new(&primary_range)
+        .expect("There should be CXL Capabilities")
+        //.filter(|c| c != &CXLCapability::Null)
+    {
         info!("found capability: {:?}", capability);
+        let maybe_address = match capability {
+            CXLCapability::HDMDecorder(reg) => Some(reg.address),
+            _ => None,
+        };
+        if let Some(address) = maybe_address {
+            let data = unsafe { address.cast::<CXLHDMDecoderCapabilityRegister>().read() };
+            info!("{:?}", data);
+        }
     }
 
     let base_ptr = register_pages.start.start_address().as_ptr::<u8>();
@@ -249,7 +256,7 @@ pub fn demo_hardcoded_addr() {
 
 pub fn init() {
     if let Ok(cedt) = acpi_tables().lock().find_table::<CEDT>() {
-        info!("Found CEDT table");
+        info!("Found CEDT table {:?}", cedt.header());
         let structures = cedt.get_structures();
         for structure in structures {
             if structure.typ == CEDTStructureType::CXLHostBridgeStructure {
@@ -257,7 +264,7 @@ pub fn init() {
                 info!("Host Bridge ist {:?}", current);
                 demo_capabilities(current);
                 info!("Host Bridge hat die folgenden Root Ports:");
-                PciBus::scan_by_nr(current.uid as u8);
+                PciBus::scan_by_nr(current.uid as u8); // TODO: lookup pci address in ACPI table for uid
             } else if structure.typ == CEDTStructureType::CXLFixedMemoryWindowStructure {
                 let current: &CXLFixedMemoryWindowStructure = structure.as_structure();
                 info!("Memory Window ist ist {:?}", current);

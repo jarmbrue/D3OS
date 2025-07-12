@@ -8,11 +8,10 @@
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
-use crate::device::acpi::cedt::CEDT;
 use crate::device::pit::Timer;
 use crate::device::ps2::Keyboard;
-use crate::device::{cxl, qemu_cfg};
 use crate::device::serial::SerialPort;
+use crate::device::{cxl, qemu_cfg};
 use crate::interrupt::interrupt_dispatcher;
 use crate::memory::frames;
 use crate::memory::nvmem::Nfit;
@@ -63,7 +62,6 @@ use x86_64::structures::gdt::Descriptor;
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::{PageTable, PageTableFlags, PhysFrame};
 use x86_64::{PhysAddr, VirtAddr};
-use crate::device::cxl::{CXLCapabilityHeader, CXLHDMDecoderCapabilityRegister, CXLHDMDecoderGlobalControlRegister, GeneralCXLCapabilityHeader, CXLHDMDECODER_CAPABILITY, CXL_ARB_MUX_REGISTER_OFFSET, CXL_CACHE_MEM_PRIMARY_RANGE_OFFSET};
 
 // import labels from linker script 'link.ld'
 unsafe extern "C" {
@@ -116,7 +114,6 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         heap_region.end.start_address().as_u64()
     );
     debug!("Page frame allocator:\n{}", memory::frames::dump());
-
 
     // Initialize CPU information
     init_cpu_info();
