@@ -122,10 +122,8 @@ pub struct CXLCapabilityIterator {
 }
 
 impl CXLCapabilityIterator {
-    pub fn new(primary_range: &Page) -> Option<Self> {
-        let header_ptr = primary_range
-            .start_address()
-            .as_ptr::<CXLCapabilityListHeader>();
+    pub fn new(ptr: *const u8) -> Option<Self> {
+        let header_ptr = ptr.cast::<CXLCapabilityListHeader>();
         let header = unsafe { header_ptr.read() };
         Some(Self {
             address: header_ptr.cast(),
@@ -148,3 +146,5 @@ impl Iterator for CXLCapabilityIterator {
         return result;
     }
 }
+
+struct DvsecCXLDevices { }

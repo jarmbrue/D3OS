@@ -21,7 +21,7 @@
 use crate::device::apic::Apic;
 use crate::device::cpu::Cpu;
 use crate::device::lfb_terminal::{CursorThread, LFBTerminal};
-use crate::device::pci::PciBus;
+use crate::device::pci::{ConfigurationSpace, PciBus};
 use crate::device::pit::Timer;
 use crate::device::ps2::{Keyboard, PS2};
 use crate::device::serial;
@@ -395,9 +395,11 @@ pub fn keyboard() -> Option<Arc<Keyboard>> {
 /// Used to access PCI devices.
 /// 'boot.rs' call 'init_pci()' to scan the PCI bus and initialize this struct.
 static PCI: Once<PciBus> = Once::new();
+static CONFIG_SPACE: Once<ConfigurationSpace> = Once::new();
 
 pub fn init_pci() {
-    PCI.call_once(PciBus::scan);
+    let config_space = CONFIG_SPACE.call_once(ConfigurationSpace::from_mcfg);
+    PCI.call_once(|| PciBus::scan(config_space));
 }
 
 pub fn pci_bus() -> &'static PciBus {

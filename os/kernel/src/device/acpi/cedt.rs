@@ -32,7 +32,7 @@ pub enum CEDTStructureType {
 #[derive(Debug, Clone, Copy)]
 pub struct CEDTStructureHeader {
     pub typ: CEDTStructureType,
-    reserved_1: u8,
+    _reserved_1: u8,
     pub record_length: u16,
 }
 
@@ -42,7 +42,7 @@ pub struct CXLHostBridgeStructure {
     pub header: CEDTStructureHeader,
     pub uid: u32,
     pub cxl_version: u32,
-    reserved_2: u32,
+    _reserved_2: u32,
     pub base: u64,
     pub length: u64,
 }
@@ -51,12 +51,12 @@ pub struct CXLHostBridgeStructure {
 #[derive(Debug, Clone, Copy)]
 pub struct CXLFixedMemoryWindowStructure {
     pub header: CEDTStructureHeader,
-    reserved_2: u32,
+    _reserved_2: u32,
     pub base_hpa: u64,
     pub window_size: u64,
     pub encoded_nr_of_interleave_ways: u8,
     pub interleave_arithmetic: u8,
-    reserved_3: u16,
+    _reserved_3: u16,
     pub host_bridge_interleave_granularity: u64,
     pub window_restrictions: u16,
     pub qtg_id: u16,
@@ -67,7 +67,7 @@ pub struct CXLFixedMemoryWindowStructure {
 #[derive(Debug, Clone, Copy)]
 pub struct CXLXORInterleaveMathStructure {
     pub header: CEDTStructureHeader,
-    reserved_2: u16,
+    _reserved_2: u16,
     pub nr_of_bitmap_entries: u8,
     pub xormap_list: u128, // hier muss 8*Anzahl vor nr_of_bitmap_entries
 }
@@ -87,7 +87,7 @@ pub struct RCECDownstreamPortAssociationStructure {
 pub struct CXLSystemDescriptionStructure {
     pub header: CEDTStructureHeader,
     pub system_capabilities: u16,
-    reserved_2: u16,
+    _reserved_2: u16,
 }
 
 unsafe impl AcpiTable for CEDT {
