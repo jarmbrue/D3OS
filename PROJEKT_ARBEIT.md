@@ -196,7 +196,7 @@ Zusätzliche Informationen:
 - Namespace kann auch als fsdax erstellt werden, dieser kann als Dateisystem formatiert und mountet werden.
 - Veränderungen sind in der /tmp/cxltest.raw und /tmp/lsa.raw zu sehen.
 - Diese Veränderungen in den beiden Dateien bleiben bis zum Löschen der Dateien bestehen.
-- Beim Neustarten wird der Namespace nicht mehr erkannt und das Erstellen eines neuen Namespaces schlägt fehl.
+- Beim Neustarten mit bereits beschriebenen /mpt/cxltest.raw und /tmp/lsa.raw wird der Namespace nicht mehr erkannt und das Erstellen eines neuen Namespaces schlägt fehl.
 
 # Auf echter Hardware
 
@@ -275,9 +275,9 @@ Eine andere Möglichkeit wäre, ein CLI-Tool wie `ipmitool` zu verwenden, um die
 
 ## Fehler Suche
 Im BIOS haben wir im Reiter *CXL Common Options* alles bis auf die CXL-Encryption aktiviert.
-Die Web-Version des BIOS ist sehr vereinfacht und es fehlen eineige CXL-Einstellungen. Deshalb ist es zu empfehlen, über Remote-KVM auf das BIOS zuzugreifen.
+Die Web-Version des BIOS ist sehr vereinfacht und es fehlen einige CXL-Einstellungen. Deshalb ist es zu empfehlen, über Remote-KVM auf das BIOS zuzugreifen.
 
-Nach dem Austausch mit dem Yussuf Khalil vom KIT (Karlsruher Institut für Technologie) stellte sich heraus, dass sie ein ähnliches Setup wie wir verwenden und bei ihnen funktioniert es.
+Nach dem Austausch mit Yussuf Khalil vom KIT (Karlsruher Institut für Technologie) stellte sich heraus, dass sie ein ähnliches Setup wie wir verwenden und bei ihnen funktioniert es.
 Infolgedessen sind wir noch einmal gemeinsam alle BIOS-Optionen durchgegangen und haben CXL SMP deaktiviert, das hat aber zu keiner Veränderung geführt
 
 Außerdem wurde das BIOS auf die Version `R29_F43` geupdatet.
@@ -291,6 +291,6 @@ Beim Einschalten des Servers, landet dieser in einem Boot-Loop und und das BIOS 
 Folgende Fragestellungen sind mögliche Ansätze, um an CXL weiter zu arbeiten:
 
 - Was wurde durch dcd-Patches in QEMU bzw. Linux geändert?
-- Funktioniert CXL mit einem "normaler" Linux kernel in dem gepachten QEMU?
+- Funktioniert CXL mit einem "normalen" Linux Kernel in dem gepachten QEMU?
 - Ist die CXL Karte wirklich der Grund für den Boot-Loop?
 
